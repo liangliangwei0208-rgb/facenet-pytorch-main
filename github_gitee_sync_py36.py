@@ -122,10 +122,11 @@ def run_git(
     result = subprocess.run(
         full_args,
         cwd=str(repo),
-        text=True,
+        universal_newlines=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=False,
     )
     if result.stdout:
@@ -144,10 +145,11 @@ def git_output(repo: Path, args: Sequence[str], *, check: bool = True) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=str(repo),
-        text=True,
+        universal_newlines=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=False,
     )
     if check and result.returncode != 0:
@@ -199,10 +201,11 @@ def ensure_has_commit(repo: Path) -> None:
     result = subprocess.run(
         ["git", "rev-parse", "--verify", "HEAD"],
         cwd=str(repo),
-        text=True,
+        universal_newlines=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=False,
     )
     if result.returncode != 0:
@@ -226,10 +229,11 @@ def is_commit_reachable_from_refs(repo: Path, commit: str) -> bool:
     result = subprocess.run(
         ["git", "name-rev", "--name-only", "--no-undefined", commit],
         cwd=str(repo),
-        text=True,
+        universal_newlines=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=False,
     )
     return result.returncode == 0
@@ -283,10 +287,11 @@ def get_remote_url(repo: Path, remote: str) -> Optional[str]:
     result = subprocess.run(
         ["git", "remote", "get-url", remote],
         cwd=str(repo),
-        text=True,
+        universal_newlines=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=False,
     )
     if result.returncode != 0:
@@ -407,10 +412,11 @@ def detect_gitee_ssh_owner() -> Optional[str]:
             "ConnectTimeout=15",
             "git@gitee.com",
         ],
-        text=True,
+        universal_newlines=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         check=False,
     )
     output = strip_ansi(f"{result.stdout}\n{result.stderr}")
@@ -452,10 +458,11 @@ def github_cli_token() -> Tuple[Optional[str], Optional[str]]:
     try:
         result = subprocess.run(
             ["gh", "auth", "token"],
-            text=True,
+            universal_newlines=True,
             encoding="utf-8",
             errors="replace",
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             check=False,
             timeout=15,
         )
