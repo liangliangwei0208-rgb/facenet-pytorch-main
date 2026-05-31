@@ -6,7 +6,6 @@ GitHub/Gitee 三方同步脚本。
 显示菜单，可选择只创建/补齐 GitHub 公开仓库，或把本地、GitHub、
 Gitee 三端同步到同一个分支提交。
 """
-from __future__ import annotations
 
 import argparse
 import json
@@ -43,9 +42,8 @@ prepend_conda_dll_paths()
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 
 DEFAULT_BRANCH = None
@@ -65,37 +63,32 @@ class SyncError(RuntimeError):
     """Readable repository sync error."""
 
 
-@dataclass(frozen=True)
-class GitResult:
+class GitResult(NamedTuple):
     returncode: int
     stdout: str
     stderr: str
 
 
-@dataclass(frozen=True)
-class RepoSlug:
+class RepoSlug(NamedTuple):
     owner: str
     name: str
 
 
-@dataclass(frozen=True)
-class GitHubTarget:
-    owner: str
-    name: str
-    ssh_url: str
-    web_url: str
-
-
-@dataclass(frozen=True)
-class GiteeTarget:
+class GitHubTarget(NamedTuple):
     owner: str
     name: str
     ssh_url: str
     web_url: str
 
 
-@dataclass(frozen=True)
-class ApiResponse:
+class GiteeTarget(NamedTuple):
+    owner: str
+    name: str
+    ssh_url: str
+    web_url: str
+
+
+class ApiResponse(NamedTuple):
     status: int
     text: str
     data: Any
@@ -286,7 +279,7 @@ def ensure_complete_history(repo: Path, remote: str, *, dry_run: bool) -> None:
         )
 
 
-def get_remote_url(repo: Path, remote: str) -> str | None:
+def get_remote_url(repo: Path, remote: str) -> Optional[str]:
     result = subprocess.run(
         ["git", "remote", "get-url", remote],
         cwd=str(repo),
@@ -308,7 +301,7 @@ def strip_dot_git(repo_name: str) -> str:
     return repo_name
 
 
-def parse_remote_slug(remote_url: str, expected_host: str) -> RepoSlug | None:
+def parse_remote_slug(remote_url: str, expected_host: str) -> Optional[RepoSlug]:
     # 同时支持 SSH 地址 git@host:owner/repo.git 和 HTTPS 地址 https://host/owner/repo.git。
     scp_match = re.match(
         rf"^(?:[^@]+@)?{re.escape(expected_host)}:(?P<owner>[^/]+)/(?P<repo>[^/]+?)/?$",
@@ -330,7 +323,7 @@ def parse_remote_slug(remote_url: str, expected_host: str) -> RepoSlug | None:
     return RepoSlug(owner=parts[0], name=strip_dot_git(parts[1]))
 
 
-def parse_github_slug(remote_url: str) -> RepoSlug | None:
+def parse_github_slug(remote_url: str) -> Optional[RepoSlug]:
     # GitHub 在部分网络环境下需要走 443 端口，地址会变成 ssh.github.com。
     slug = parse_remote_slug(remote_url, "github.com")
     if slug is not None:
@@ -399,7 +392,7 @@ def strip_ansi(text: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
-def detect_gitee_ssh_owner() -> str | None:
+def detect_gitee_ssh_owner() -> Optional[str]:
     """通过 SSH 登录提示识别当前 Gitee 账号，例如 liangliang2000。"""
     # Gitee 的 SSH 认证成功时会输出类似：
     # Hi liangliang2000(@liangliang2000)! You've successfully authenticated...
@@ -432,7 +425,7 @@ def detect_gitee_ssh_owner() -> str | None:
         return None
 
 
-def choose_gitee_owner(explicit_owner: str | None, fallback_owner: str) -> str:
+def choose_gitee_owner(explicit_owner: Optional[str], fallback_owner: str) -> str:
     """优先使用命令行参数，其次使用 SSH 账号，最后回退 GitHub owner。"""
     if explicit_owner:
         return explicit_owner
@@ -446,7 +439,7 @@ def choose_gitee_owner(explicit_owner: str | None, fallback_owner: str) -> str:
     return fallback_owner
 
 
-def env_token(names: Sequence[str]) -> tuple[str | None, str]:
+def env_token(names: Sequence[str]) -> Tuple[Optional[str], str]:
     for name in names:
         token = os.environ.get(name)
         if token:
@@ -454,7 +447,7 @@ def env_token(names: Sequence[str]) -> tuple[str | None, str]:
     return None, names[0]
 
 
-def github_cli_token() -> tuple[str | None, str | None]:
+def github_cli_token() -> Tuple[Optional[str], Optional[str]]:
     # 如果用户已经用 gh 登录，就复用 gh 保存的 token；捕获输出，避免泄露 token。
     try:
         result = subprocess.run(
@@ -475,7 +468,7 @@ def github_cli_token() -> tuple[str | None, str | None]:
     return None, None
 
 
-def github_token() -> tuple[str | None, str]:
+def github_token() -> Tuple[Optional[str], str]:
     token, source = env_token(GITHUB_TOKEN_ENV_NAMES)
     if token:
         return token, source
@@ -508,7 +501,7 @@ def ensure_https_support() -> None:
         )
 
 
-def prompt_text(label: str, default: str | None = None) -> str:
+def prompt_text(label: str, default: Optional[str] = None) -> str:
     default_hint = f" [{default}]" if default else ""
     while True:
         try:
@@ -558,8 +551,8 @@ def github_api_request(
     method: str,
     path: str,
     *,
-    token: str | None = None,
-    payload: dict[str, Any] | None = None,
+    token: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> ApiResponse:
     ensure_https_support()
     headers = {
@@ -605,7 +598,7 @@ def github_authenticated_login(token: str) -> str:
     return str(login)
 
 
-def github_repo_exists(target: GitHubTarget, token: str | None) -> bool:
+def github_repo_exists(target: GitHubTarget, token: Optional[str]) -> bool:
     response = github_api_request(
         "GET",
         f"/repos/{api_quote(target.owner)}/{api_quote(target.name)}",
@@ -623,7 +616,7 @@ def github_repo_exists(target: GitHubTarget, token: str | None) -> bool:
 
 def create_github_repo(target: GitHubTarget, *, token: str, private: bool) -> None:
     login = github_authenticated_login(token)
-    payload: dict[str, Any] = {
+    payload: Dict[str, Any] = {
         "name": target.name,
         "private": private,
         "description": "Created by github_gitee_sync.py",
@@ -647,7 +640,7 @@ def create_github_repo(target: GitHubTarget, *, token: str, private: bool) -> No
 def ensure_github_repo(
     *,
     target: GitHubTarget,
-    token: str | None,
+    token: Optional[str],
     private: bool,
     dry_run: bool,
 ) -> None:
@@ -681,13 +674,13 @@ def ensure_github_repo(
 def choose_github_target(
     *,
     repo: Path,
-    token: str | None,
-    github_owner: str | None,
-    github_repo: str | None,
+    token: Optional[str],
+    github_owner: Optional[str],
+    github_repo: Optional[str],
     github_private: bool,
     dry_run: bool,
-) -> tuple[GitHubTarget, bool]:
-    default_owner: str | None = DEFAULT_GITHUB_OWNER
+) -> Tuple[GitHubTarget, bool]:
+    default_owner: Optional[str] = DEFAULT_GITHUB_OWNER
     if token and not dry_run:
         try:
             token_owner = github_authenticated_login(token)
@@ -725,9 +718,9 @@ def ensure_existing_github_repository(
     repo: Path,
     remote: str,
     target: GitHubTarget,
-    token: str | None,
-    github_owner: str | None,
-    github_repo: str | None,
+    token: Optional[str],
+    github_owner: Optional[str],
+    github_repo: Optional[str],
     private: bool,
     fix_remote: bool,
     confirm_remote_retarget: bool,
@@ -805,8 +798,8 @@ def ensure_github_remote(
     *,
     repo: Path,
     remote: str,
-    github_owner: str | None,
-    github_repo: str | None,
+    github_owner: Optional[str],
+    github_repo: Optional[str],
     github_private: bool,
     fix_remote: bool,
     confirm_remote_retarget: bool,
@@ -900,8 +893,8 @@ def ensure_github_repository(
     *,
     repo: Path,
     github_remote: str,
-    github_owner: str | None,
-    github_repo: str | None,
+    github_owner: Optional[str],
+    github_repo: Optional[str],
     github_private: bool,
     fix_remote: bool,
     confirm_remote_retarget: bool,
@@ -947,11 +940,11 @@ def gitee_api_request(
     method: str,
     path: str,
     *,
-    token: str | None = None,
-    form: dict[str, str] | None = None,
+    token: Optional[str] = None,
+    form: Optional[Dict[str, str]] = None,
 ) -> ApiResponse:
     ensure_https_support()
-    query: dict[str, str] = {}
+    query: Dict[str, str] = {}
     body = None
     headers = {
         "Accept": "application/json",
@@ -990,7 +983,7 @@ def is_empty_gitee_repo_public_error(response: ApiResponse) -> bool:
     return response.status == 422 and "空仓库不支持设置为公开仓库" in message
 
 
-def get_gitee_repo(target: GiteeTarget, token: str | None) -> ApiResponse:
+def get_gitee_repo(target: GiteeTarget, token: Optional[str]) -> ApiResponse:
     # 查询 Gitee 仓库是否存在；公开仓库通常不用 token 也能查到。
     return gitee_api_request(
         "GET",
@@ -999,7 +992,7 @@ def get_gitee_repo(target: GiteeTarget, token: str | None) -> ApiResponse:
     )
 
 
-def gitee_repo_exists(target: GiteeTarget, token: str | None) -> bool:
+def gitee_repo_exists(target: GiteeTarget, token: Optional[str]) -> bool:
     response = get_gitee_repo(target, token)
     if response.status == 200:
         return True
@@ -1040,9 +1033,9 @@ def make_gitee_repo_public_if_needed(
     target: GiteeTarget,
     response: ApiResponse,
     *,
-    token: str | None,
+    token: Optional[str],
     private: bool,
-) -> tuple[ApiResponse, bool]:
+) -> Tuple[ApiResponse, bool]:
     if private or not is_gitee_repo_private(response):
         return response, False
 
@@ -1095,7 +1088,7 @@ def update_gitee_repo_visibility(
     return True
 
 
-def gitee_default_branch(response: ApiResponse) -> str | None:
+def gitee_default_branch(response: ApiResponse) -> Optional[str]:
     if not isinstance(response.data, dict):
         return None
     value = response.data.get("default_branch")
@@ -1131,7 +1124,7 @@ def ensure_gitee_default_branch(
     *,
     target: GiteeTarget,
     branch: str,
-    token: str | None,
+    token: Optional[str],
     dry_run: bool,
 ) -> None:
     if dry_run:
@@ -1188,7 +1181,7 @@ def create_gitee_repo(target: GiteeTarget, *, token: str, private: bool) -> None
 def ensure_gitee_repo(
     *,
     target: GiteeTarget,
-    token: str | None,
+    token: Optional[str],
     private: bool,
     dry_run: bool,
 ) -> bool:
@@ -1269,13 +1262,13 @@ def print_final_refs(repo: Path, branch: str, github_remote: str, gitee_remote: 
 def sync_repositories(
     *,
     repo: Path,
-    branch: str | None,
+    branch: Optional[str],
     github_remote: str,
     gitee_remote: str,
-    github_owner: str | None,
-    github_repo: str | None,
+    github_owner: Optional[str],
+    github_repo: Optional[str],
     github_private: bool,
-    gitee_owner: str | None,
+    gitee_owner: Optional[str],
     private: bool,
     fix_remote: bool,
     confirm_github_remote_retarget: bool,
@@ -1342,9 +1335,9 @@ def sync_repositories(
         log("Dry run complete.")
         return
 
-    fetch_warnings: list[str] = []
-    missing_refs: list[str] = []
-    fetched_remotes: list[str] = []
+    fetch_warnings: List[str] = []
+    missing_refs: List[str] = []
+    fetched_remotes: List[str] = []
     for remote in (github_remote, gitee_remote):
         # 4. 拉取两端远程分支。新仓库还没有该分支时，只记录 warning。
         step(f"Fetch {remote}/{branch}")
@@ -1377,7 +1370,7 @@ def sync_repositories(
         )
         raise
 
-    push_failures: list[str] = []
+    push_failures: List[str] = []
     for remote in (github_remote, gitee_remote):
         # 6. 最后把当前本地 HEAD 同步推送到 GitHub 和 Gitee。
         step(f"Push HEAD to {remote}/{branch}")
@@ -1442,7 +1435,7 @@ def sync_repositories(
     log("Sync complete: local, GitHub, and Gitee are aligned.")
 
 
-def public_key_text() -> str | None:
+def public_key_text() -> Optional[str]:
     pub_key = Path.home() / ".ssh" / "id_ed25519.pub"
     if not pub_key.exists():
         return None
@@ -1460,9 +1453,9 @@ def known_hosts_has_gitee() -> bool:
 def print_init_gitee(
     repo: Path,
     github_remote: str,
-    github_owner: str | None,
-    github_repo: str | None,
-    gitee_owner: str | None,
+    github_owner: Optional[str],
+    github_repo: Optional[str],
+    gitee_owner: Optional[str],
 ) -> None:
     log("GitHub/Gitee initialization checklist")
     key_text = public_key_text()
@@ -1571,7 +1564,7 @@ def resolve_run_mode(args: argparse.Namespace) -> str:
     return prompt_main_menu()
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Synchronize a local repository with same-name GitHub and Gitee remotes."
     )
@@ -1651,7 +1644,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     try:
         repo = Path(args.repo)
